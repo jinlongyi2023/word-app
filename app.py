@@ -1,97 +1,87 @@
-import os
 import streamlit as st
 from notion_client import Client
+import random
 
-# 获取环境变量
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
-DATABASE_ID = os.getenv("DATABASE_ID")
+# --------------------
+# 配置
+# --------------------
+NOTION_TOKEN = st.secrets["NOTION_TOKEN"]   # 在 Railway/Streamlit Cloud 的 secrets 设置
+DATABASE_ID = st.secrets["DATABASE_ID"]
 
 notion = Client(auth=NOTION_TOKEN)
 
-# 查询 Notion 数据库
-def query_words(category=None, sub_category=None):
-    filter_conditions = []
-
+# --------------------
+# 从 Notion 查询单词
+# --------------------
+def query_words(category=None, subcategory=None):
+    filters = []
     if category:
-        filter_conditions.append({"property": "大类", "select": {"equals": category}})
-    if sub_category:
-        filter_conditions.append({"property": "子类", "select": {"equals": sub_category}})
+        filters.append({
+            "property": "category",
+            "select": {"equals": category}
+        })
+    if subcategory:
+        filters.append({
+            "property": "subcategory",
+            "select": {"equals": subcategory}
+        })
 
-    if filter_conditions:
-        filter_obj = {"and": filter_conditions}
-    else:
-        filter_obj = {}
+    filter_query = {"and": filters} if filters else {}
 
     results = notion.databases.query(
         database_id=DATABASE_ID,
-        filter=filter_obj if filter_conditions else None
+        filter=filter_query if filters else None
     )
 
     words = []
     for row in results["results"]:
         props = row["properties"]
-        word = props["单词"]["title"][0]["plain_text"] if props["单词"]["title"] else ""
-        meaning = props["中文释义"]["rich_text"][0]["plain_text"] if props["中文释义"]["rich_text"] else ""
-        pos = props["词性"]["select"]["name"] if props["词性"]["select"] else ""
-        level = props["难度等级"]["select"]["name"] if props["难度等级"]["select"] else ""
-        category = props["大类"]["select"]["name"] if props["大类"]["select"] else ""
-        sub_category = props["子类"]["select"]["name"] if props["子类"]["select"] else ""
-        mastered = props["已掌握"]["checkbox"]
-
         words.append({
-            "单词": word,
-            "释义": meaning,
-            "词性": pos,
-            "难度等级": level,
-            "大类": category,
-            "子类": sub_category,
-            "已掌握": mastered
+            "word": props["word"]["title"][0]["text"]["content"] if props["word"]["title"] else "",
+            "meaning": props["meaning"]["rich_text"][0]["text"]["content"] if props["meaning"]["rich_text"] else "",
+            "pos": props["pos"]["select"]["name"] if props["pos"]["select"] else "",
+            "level": props["level"]["select"]["name"] if props["level"]["select"] else "",
+            "category": props["category"]["select"]["name"] if props["category"]["select"] else "",
+            "subcategory": props["subcategory"]["select"]["name"] if props["subcategory"]["select"] else "",
+            "mastered": props["mastered"]["checkbox"] if "mastered" in props else False
         })
     return words
 
-# Streamlit 前端
+# --------------------
+# Streamlit 界面
+# --------------------
 st.set_page_config(page_title="TOPIK 词库（单表版）", layout="wide")
 st.title("📚 TOPIK 词库（单表简化版）")
 
 # 筛选条件
-category = st.selectbox("选择大类", ["", "必备", "真题", "高频", "主题"])
-sub_category = st.text_input("子类（可填如：初级/中级/Unit/听力/阅读等）")
+category = st.selectbox("选择大类", ["", "必备单词", "真题单词", "高频词汇", "主题词汇"])
+subcategory = st.text_input("子类 (可填: 初级/中级/Unit/听力/阅读/科技/生活...)")
 
-# 查询数据
 if st.button("查询单词"):
-    data = query_words(category if category else None, sub_category if sub_category else None)
-    if data:
-        st.write(f"共找到 {len(data)} 条单词：")
-        st.table(data)
+    data = query_words(category if category else None, subcategory if subcategory else None)
+
+    if not data:
+        st.warning("⚠️ 没有查到单词，请检查筛选条件")
     else:
-        st.warning("没有找到符合条件的单词")
+        mode = st.radio("模式", ["全部单词", "闪卡", "随机10个", "测试"])
 
-# 模式切换
-mode = st.radio("模式", ["全部单词", "闪卡", "随机10个", "测试"])
+        if mode == "全部单词":
+            st.table(data)
 
-words = query_words(category if category else None, sub_category if sub_category else None)
+        elif mode == "闪卡":
+            for w in data:
+                with st.expander(w["word"]):
+                    st.write(f"📖 释义: {w['meaning']}")
+                    st.write(f"词性: {w['pos']} | 等级: {w['level']} | 子类: {w['subcategory']}")
 
-if mode == "全部单词":
-    st.subheader("全部单词")
-    for w in words:
-        st.write(f"{w['单词']} ({w['词性']}) - {w['释义']}  [{w['大类']}/{w['子类']}]")
+        elif mode == "随机10个":
+            sample = random.sample(data, min(10, len(data)))
+            st.table(sample)
 
-elif mode == "闪卡":
-    st.subheader("闪卡模式")
-    for w in words:
-        with st.expander(w['单词']):
-            st.write(f"{w['释义']} ({w['词性']})")
-
-elif mode == "随机10个":
-    import random
-    st.subheader("随机抽取10个")
-    sample = random.sample(words, min(10, len(words)))
-    for w in sample:
-        st.write(f"{w['单词']} - {w['释义']}")
-
-elif mode == "测试":
-    st.subheader("测试模式（显示单词，不显示释义）")
-    for w in words:
-        st.write(f"👉 {w['单词']}   （请写出中文释义）")
-
-st.write(props.keys())
+        elif mode == "测试":
+            score = 0
+            for w in random.sample(data, min(5, len(data))):
+                answer = st.text_input(f"{w['word']} 的中文意思是？", key=w['word'])
+                if answer.strip() == w["meaning"]:
+                    score += 1
+            st.success(f"你的得分：{score}/{min(5, len(data))}")
