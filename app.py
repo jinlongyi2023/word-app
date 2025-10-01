@@ -64,8 +64,6 @@ def query_words(src_type=None, sub1=None, sub2=None):
         filters.append({"property":"来源大类","select":{"equals":src_type}})
     if sub1:
         filters.append({"property":"子类1","select":{"equals":sub1}})
-    if sub2:
-        filters.append({"property":"子类2/分组","rich_text":{"contains": str(sub2)}})
 
     filter_obj = {"and": filters} if filters else None
     results = query_with_filter(filter_obj)
@@ -81,7 +79,6 @@ def query_words(src_type=None, sub1=None, sub2=None):
 src_types, sub1_map = load_options()
 src_type = st.sidebar.selectbox("来源大类", src_types, index=0)
 sub1 = st.sidebar.selectbox("子类1", sub1_map.get(src_type, []))
-sub2 = st.sidebar.text_input("子类2/分组（必备: Unit；真题: 届次，可留空）")
 mode = st.sidebar.radio("模式", ["全部单词","闪卡","随机10个","测试"], index=0)
 
 with st.spinner("读取中..."):
