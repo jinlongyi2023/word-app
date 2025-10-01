@@ -5,8 +5,10 @@ import random
 # ------------------------
 # Notion 配置
 # ------------------------
-NOTION_TOKEN = st.secrets["NOTION_TOKEN"]
-DATABASE_ID = st.secrets["DATABASE_ID"]
+import os
+
+NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+DATABASE_ID = os.getenv("DATABASE_ID")
 
 notion = Client(auth=NOTION_TOKEN)
 
