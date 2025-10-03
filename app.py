@@ -1,117 +1,264 @@
-import streamlit as st
-from notion_client import Client
-import random
+# app.py — TOPIK 背单词 · MVP 最终版
+# 说明：
+# 1) 支持注册/登录（Supabase Auth）
+# 2) 目录→子目录→单词列表
+# 3) 闪卡（翻牌）
+# 4) 简单测验（单选）
+# 5) 进度：已掌握 / 错词本
+# 6) 会员：手动在 memberships 表开通后可访问全部；未开通也能体验公共词库
+# 7) 去重策略：学一个词 → “全库同名词”一起标记进度（不改数据库结构）
 
-# ------------------------
-# Notion 配置
-# ------------------------
 import os
+import random
+import streamlit as st
+from supabase import create_client, Client
 
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
-DATABASE_ID = os.getenv("DATABASE_ID")
+# -------- 基础设置 --------
+st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="centered")
 
-notion = Client(auth=NOTION_TOKEN)
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 
-# ------------------------
-# 页面配置
-# ------------------------
-st.set_page_config(page_title="TOPIK 词库（单表版）", layout="wide")
-st.title("📚 TOPIK 词库（单表简化版）")
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    st.error("环境变量缺失：请在部署平台设置 SUPABASE_URL 与 SUPABASE_ANON_KEY。")
+    st.stop()
 
-# ------------------------
-# 类别映射 (前端显示中文，后台查询英文)
-# ------------------------
-category_map = {
-    "": "",
-    "必备单词": "Essential",
-    "真题单词": "Past Exam",
-    "高频词汇": "High Frequency",
-    "主题词汇": "Topic"
-}
+sb: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-# ------------------------
-# 查询函数
-# ------------------------
-def query_words(category=None, sub_category=None):
-    filters = []
+# -------- 小工具函数 --------
+def get_session_user():
+    """从 session_state 取已登录用户。"""
+    if "user" not in st.session_state:
+        st.session_state.user = None
+    return st.session_state.user
 
-    if category:
-        filters.append({
-            "property": "category",
-            "select": {"equals": category}
-        })
+def require_login_ui():
+    """登录/注册 UI。未登录时调用。"""
+    tab_login, tab_signup = st.tabs(["登录", "注册"])
 
-    if sub_category:
-        filters.append({
-            "property": "subcategory",
-            "select": {"equals": sub_category}
-        })
+    with tab_login:
+        email = st.text_input("邮箱", key="login_email")
+        pw = st.text_input("密码", type="password", key="login_pw")
+        if st.button("登录", type="primary", use_container_width=True):
+            try:
+                res = sb.auth.sign_in_with_password({"email": email, "password": pw})
+                if res and res.user:
+                    st.session_state.user = res.user
+                    st.success("登录成功")
+                    st.experimental_rerun()
+                else:
+                    st.error("登录失败，请检查邮箱/密码")
+            except Exception as e:
+                st.error(f"登录异常：{e}")
 
-    filter_obj = {"and": filters} if filters else None
+    with tab_signup:
+        email2 = st.text_input("邮箱", key="signup_email")
+        pw2 = st.text_input("密码", type="password", key="signup_pw")
+        if st.button("注册", use_container_width=True):
+            try:
+                res = sb.auth.sign_up({"email": email2, "password": pw2})
+                if res and res.user:
+                    st.success("注册成功，请回到登录页登录")
+                else:
+                    st.error("注册失败，请稍后再试")
+            except Exception as e:
+                st.error(f"注册异常：{e}")
 
-    results = notion.databases.query(
-        **{"database_id": DATABASE_ID, "filter": filter_obj} if filter_obj else {"database_id": DATABASE_ID}
+def mark_progress_for_all(word_kr: str, status: str, uid: str):
+    """
+    最简单的去重进度：按“韩文词拼写”在全库匹配，统一标记（known / wrong）。
+    如果以后要更严格，可同时匹配词性 .eq("pos", 某值)。
+    """
+    try:
+        q = sb.table("vocabularies").select("id, word_kr").eq("word_kr", word_kr).execute()
+        all_same = q.data or []
+        if not all_same:
+            return
+        for row in all_same:
+            sb.table("user_progress").upsert({
+                "user_id": uid,
+                "vocab_id": row["id"],
+                "status": status
+            }).execute()
+    except Exception as e:
+        st.error(f"写入学习进度失败：{e}")
+
+# -------- 顶栏 --------
+col1, col2 = st.columns([1, 1])
+with col1:
+    st.title("📚 TOPIK 背单词 · MVP")
+with col2:
+    if get_session_user() and st.button("退出登录", use_container_width=True):
+        st.session_state.user = None
+        sb.auth.sign_out()
+        st.experimental_rerun()
+
+# -------- 登录态处理 --------
+if get_session_user() is None:
+    require_login_ui()
+    st.stop()
+
+uid = st.session_state.user.id
+
+# -------- 会员状态 --------
+try:
+    mem = (
+        sb.table("memberships")
+        .select("is_active")
+        .eq("user_id", uid)
+        .maybe_single()
+        .execute()
+        .data
     )
+    is_member = bool(mem and mem.get("is_active"))
+except Exception:
+    is_member = False
 
-    words = []
-    for r in results["results"]:
-        props = r["properties"]
-        word = props["word"]["title"][0]["text"]["content"] if props["word"]["title"] else ""
-        meaning = props["meaning"]["rich_text"][0]["text"]["content"] if props["meaning"]["rich_text"] else ""
-        pos = props["pos"]["select"]["name"] if props["pos"]["select"] else ""
-        level = props["level"]["select"]["name"] if props["level"]["select"] else ""
-        category_val = props["category"]["select"]["name"] if props["category"]["select"] else ""
-        subcategory_val = props["subcategory"]["select"]["name"] if props["subcategory"]["select"] else ""
-        mastered = props["mastered"]["checkbox"]
+if not is_member:
+    st.info("当前为非会员：可体验公共词库。购买会员后联系管理员开通权限。")
 
-        words.append({
-            "word": word,
-            "meaning": meaning,
-            "pos": pos,
-            "level": level,
-            "category": category_val,
-            "subcategory": subcategory_val,
-            "mastered": mastered
-        })
-    return words
+# -------- 目录 / 子目录选择 --------
+try:
+    cats = sb.table("categories").select("id, name").execute().data or []
+except Exception as e:
+    st.error(f"加载目录失败：{e}")
+    st.stop()
 
-# ------------------------
-# 页面筛选条件
-# ------------------------
-ui_choice = st.selectbox("选择大类", list(category_map.keys()))
-category = category_map[ui_choice]
+if not cats:
+    st.warning("还没有任何目录。请在数据库 `categories` 中先添加。")
+    st.stop()
 
-subcategory = st.text_input("子类 (可填: 初级/中级/Unit/听力/阅读/科技/生活...)")
+cat_map = {c["name"]: c["id"] for c in cats}
+cat_name = st.selectbox("选择目录", list(cat_map.keys()))
+cat_id = cat_map[cat_name]
 
-# ------------------------
-# 模式选择
-# ------------------------
-mode = st.radio("模式", ["全部单词", "闪卡", "随机10个", "测试"])
+try:
+    subs = (
+        sb.table("subcategories")
+        .select("id, name")
+        .eq("category_id", cat_id)
+        .order("order_no")
+        .execute()
+        .data
+        or []
+    )
+except Exception as e:
+    st.error(f"加载子目录失败：{e}")
+    st.stop()
 
-# ------------------------
-# 查询并展示
-# ------------------------
-if st.button("查询单词"):
-    words = query_words(category if category else None, subcategory if subcategory else None)
+if not subs:
+    st.warning("该目录下暂无子目录。请在 `subcategories` 中添加（如 听力/阅读、Unit1~20）。")
+    st.stop()
 
-    if not words:
-        st.warning("没有查询到单词，请检查筛选条件。")
+sub_map = {s["name"]: s["id"] for s in subs}
+sub_name = st.selectbox("选择子目录", list(sub_map.keys()))
+sub_id = sub_map[sub_name]
+
+# -------- 取词汇 --------
+limit = st.slider("每次加载数量", 10, 100, 30)
+try:
+    rows = (
+        sb.table("vocabularies")
+        .select("id, word_kr, meaning_zh, pos, example_kr, example_zh")
+        .eq("category_id", cat_id)
+        .eq("subcategory_id", sub_id)
+        .limit(limit)
+        .execute()
+        .data
+        or []
+    )
+except Exception as e:
+    st.error(f"加载词汇失败：{e}")
+    rows = []
+
+# -------- UI：列表 / 闪卡 / 测验 / 进度 --------
+T1, T2, T3, T4 = st.tabs(["单词列表", "闪卡", "测验", "我的进度"])
+
+with T1:
+    if not rows:
+        st.warning("该子目录暂无词汇。")
     else:
-        if mode == "全部单词":
-            st.table(words)
+        for r in rows:
+            st.markdown(f"**{r['word_kr']}** · {r.get('pos','')}  \n{r['meaning_zh']}")
+            with st.expander("例句"):
+                st.write(r.get("example_kr") or "—")
+                st.write(r.get("example_zh") or "—")
+            c1, c2 = st.columns(2)
+            if c1.button("已掌握", key=f"k_{r['id']}"):
+                mark_progress_for_all(r["word_kr"], "known", uid)
+                st.toast("已标记为已掌握（全库同名词同步）")
+            if c2.button("加入错词本", key=f"w_{r['id']}"):
+                mark_progress_for_all(r["word_kr"], "wrong", uid)
+                st.toast("已加入错词本（全库同名词同步）")
 
-        elif mode == "闪卡":
-            for w in words:
-                with st.expander(w["word"]):
-                    st.write(f"中文: {w['meaning']}")
-                    st.write(f"词性: {w['pos']} | 等级: {w['level']} | 来源: {w['category']} / {w['subcategory']}")
+with T2:
+    if "fc_idx" not in st.session_state:
+        st.session_state.fc_idx = 0
+        st.session_state.fc_show_meaning = False
+    if not rows:
+        st.warning("该子目录暂无词汇。")
+    else:
+        r = rows[st.session_state.fc_idx % len(rows)]
+        st.subheader(r["word_kr"])
+        if st.button("翻牌 / 显示释义"):
+            st.session_state.fc_show_meaning = not st.session_state.fc_show_meaning
+        if st.session_state.fc_show_meaning:
+            st.markdown(f"**{r['meaning_zh']}** · {r.get('pos','')}")
+            with st.expander("例句"):
+                st.write(r.get("example_kr") or "—")
+                st.write(r.get("example_zh") or "—")
+        c1, c2, c3 = st.columns(3)
+        if c1.button("上一张"):
+            st.session_state.fc_idx = (st.session_state.fc_idx - 1) % len(rows)
+            st.session_state.fc_show_meaning = False
+        if c2.button("已掌握（全库）"):
+            mark_progress_for_all(r["word_kr"], "known", uid)
+            st.toast("这张卡片已标记为已掌握")
+        if c3.button("下一张"):
+            st.session_state.fc_idx = (st.session_state.fc_idx + 1) % len(rows)
+            st.session_state.fc_show_meaning = False
 
-        elif mode == "随机10个":
-            sample = random.sample(words, min(10, len(words)))
-            for w in sample:
-                with st.expander(w["word"]):
-                    st.write(f"中文: {w['meaning']}")
-                    st.write(f"词性: {w['pos']} | 等级: {w['level']} | 来源: {w['category']} / {w['subcategory']}")
+with T3:
+    if len(rows) < 4:
+        st.info("题库不足 4 条，无法出题。请增加词汇或提高加载数量。")
+    else:
+        q = random.choice(rows)
+        options = {q["meaning_zh"]}
+        while len(options) < 4:
+            options.add(random.choice(rows)["meaning_zh"])
+        options = list(options)
+        random.shuffle(options)
 
-        elif mode == "测试":
-            st.info("测试模式开发中...")
+        st.write(f"**题目**：`{q['word_kr']}` 的中文意思是？")
+        ans = st.radio("选择一个答案", options, index=0)
+        if st.button("提交答案", type="primary"):
+            if ans == q["meaning_zh"]:
+                st.success("答对啦！")
+                mark_progress_for_all(q["word_kr"], "known", uid)
+            else:
+                st.error(f"答错了，正确答案：{q['meaning_zh']}")
+                mark_progress_for_all(q["word_kr"], "wrong", uid)
+
+with T4:
+    try:
+        k = (
+            sb.table("user_progress")
+            .select("vocab_id")
+            .eq("user_id", uid)
+            .eq("status", "known")
+            .execute()
+            .data
+            or []
+        )
+        w = (
+            sb.table("user_progress")
+            .select("vocab_id")
+            .eq("user_id", uid)
+            .eq("status", "wrong")
+            .execute()
+            .data
+            or []
+        )
+        st.write(f"✅ 已掌握：{len(k)}  |  ❗ 错词：{len(w)}")
+    except Exception as e:
+        st.error(f"读取进度失败：{e}")
