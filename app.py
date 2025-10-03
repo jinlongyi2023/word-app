@@ -125,13 +125,15 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # -------- 功能页 --------
 if choice == "单词列表":
-    with st.container():
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("📖 单词列表")
     limit = st.slider("每次加载数量", 10, 100, 30)
-    for r in rows:
-        st.markdown(f"**{r['word_kr']}** ({r.get('pos','')}) - {r['meaning_zh']}")
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.container():   # ✅ 下面的所有内容必须缩进
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        rows = sb.table("vocabularies").select("id, word_kr, meaning_zh, pos")\
+            .eq("category_id", cat_id).eq("subcategory_id", sub_id).limit(limit).execute().data or []
+        for r in rows:
+            st.markdown(f"**{r['word_kr']}** ({r.get('pos','')}) - {r['meaning_zh']}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 elif choice == "闪卡":
     st.subheader("🎴 闪卡模式")
