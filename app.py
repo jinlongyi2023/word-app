@@ -186,7 +186,7 @@ with col2:
     st.markdown("👉 提示：点击抽卡，显示韩中释义")
     st.markdown('</div>', unsafe_allow_html=True)
 
-elif choice == '管理员':
+elif choice == "管理员":
     st.subheader("🛠 管理员 - 手动开通会员")
     if st.session_state.user.email.lower() in ADMIN_EMAILS:
         target_email = st.text_input("输入要开通的用户邮箱")
