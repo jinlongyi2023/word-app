@@ -25,27 +25,22 @@ def set_current(cat_id=None, cat_name=None, sub_id=None, sub_name=None):
     if sub_name is not None: cur["sub_name"] = sub_name
 
 # -------- 样式 --------
+# -------- 样式 --------
 st.markdown(
     dedent("""
     <style>
       .app-title {font-size: 40px; font-weight: 800; letter-spacing: .5px;}
-      .muted {color:#9CA3AF;font-size:14px}
+      .muted {color:#9CA3AF; font-size:14px;}
       .card {background:#111827; border:1px solid #1F2937; border-radius:16px; padding:18px; margin:10px 0;}
       .btn-row button {border-radius:10px !important; height:42px;}
-      .metric {font-size:13px;color:#9CA3AF;margin-bottom:6px}
-      .big {font-size:18px;font-weight:700}
+      .metric {font-size:13px; color:#9CA3AF; margin-bottom:6px;}
+      .big {font-size:18px; font-weight:700;}
+      /* 右侧列留点空隙（可选） */
+      .col-right {padding-left:10px; padding-right:10px;}
     </style>
     """),
     unsafe_allow_html=True
 )
-
-.card {
-  background:#111827;
-  border:1px solid #1F2937;
-  border-radius:16px;
-  padding:18px;
-  margin:10px 0;
-}
 
 # -------- Supabase --------
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
