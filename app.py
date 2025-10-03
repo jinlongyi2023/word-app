@@ -33,6 +33,17 @@ elif choice == "闪卡":
     ...
 # 以此类推
 
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown('<div class="metric">当前目录</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="big">{cat_name} / {sub_name}</div>', unsafe_allow_html=True)
+st.write("")  # 你原来的选择器/按钮...
+st.markdown('</div>', unsafe_allow_html=True)
+
+c1, c2, c3 = st.columns(3)
+with c1: st.button("✅ 已掌握", use_container_width=True)
+with c2: st.button("❗做错了", use_container_width=True)
+with c3: st.button("🔁 随机 50 个", use_container_width=True)
+
 # -------- 基础设置 --------
 st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="centered")
 
