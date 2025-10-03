@@ -83,6 +83,112 @@ def mark_progress_for_all(word_kr: str, status: str, uid: str):
     except Exception as e:
         st.error(f"写入学习进度失败：{e}")
 
+# ======= 管理员：开/关会员 =======
+SERVICE_ROLE_KEY = os.getenv("SERVICE_ROLE_KEY", "")
+ADMIN_EMAILS = [e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
+
+def is_admin():
+    try:
+        current_email = (st.session_state.user.email or "").lower()
+    except Exception:
+        current_email = ""
+    return SERVICE_ROLE_KEY and current_email in ADMIN_EMAILS
+
+def get_admin_client():
+    # 仅在服务端环境变量存在时初始化
+    return create_client(SUPABASE_URL, SERVICE_ROLE_KEY)
+
+def find_user_id_by_email(email: str):
+    """
+    用 Admin API 通过邮箱拿用户 UUID。
+    优先用 get_user_by_email；若 SDK 不支持则回退 list_users 过滤。
+    """
+    admin = get_admin_client()
+    email = email.strip().lower()
+    # 优先尝试 get_user_by_email
+    try:
+        res = admin.auth.admin.get_user_by_email(email)
+        if getattr(res, "user", None):
+            return res.user.id
+    except Exception:
+        pass
+    # 回退：分页拉取再过滤（用户少时可行）
+    try:
+        page = 1
+        while True:
+            res = admin.auth.admin.list_users(page=page, per_page=200)
+            users = getattr(res, "users", []) or []
+            for u in users:
+                if (getattr(u, "email", "") or "").lower() == email:
+                    return u.id
+            if len(users) < 200:
+                break
+            page += 1
+    except Exception as e:
+        st.error(f"查找用户失败：{e}")
+    return None
+
+def set_membership(email: str, active: bool, plan: str = "manual", granted_by: str = ""):
+    """
+    开通/关闭会员：写 memberships 表（upsert）。
+    必须使用 service_role 才能为任意用户写入。
+    """
+    admin = get_admin_client()
+    uid = find_user_id_by_email(email)
+    if not uid:
+        st.error("未找到该邮箱对应的用户，请确认用户已注册。")
+        return
+    try:
+        admin.table("memberships").upsert({
+            "user_id": uid,
+            "is_active": active,
+            "plan": plan,
+            "granted_by": granted_by or (st.session_state.user.email or "")
+        }).execute()
+        st.success(("✅ 已开通" if active else "🚫 已关闭") + f"：{email}")
+    except Exception as e:
+        st.error(f"写入 memberships 失败：{e}")
+
+# ---- 把「管理员」作为一个 Tab（可选：也可放页面底部） ----
+tabs = ["单词列表", "闪卡", "测验", "我的进度"]
+if is_admin():
+    tabs.append("管理员")
+T1, T2, T3, T4, *rest = st.tabs(tabs)
+
+# ... 你原本的 T1/T2/T3/T4 代码保持不变 ...
+
+# 管理员面板
+if is_admin() and rest:
+    (T5,) = rest
+    with T5:
+        st.subheader("管理员：手动开/关会员")
+        st.caption("仅白名单邮箱可见；操作通过服务端 Service Role Key 执行")
+        target_email = st.text_input("用户邮箱（先让对方注册，再来开通）")
+        plan = st.selectbox("来源/备注（plan）", ["manual", "xiaohongshu", "internal", "other"])
+        c1, c2 = st.columns(2)
+        if c1.button("✅ 开通会员", type="primary", use_container_width=True):
+            if target_email:
+                set_membership(target_email, True, plan=plan)
+            else:
+                st.warning("请先填写用户邮箱")
+        if c2.button("🚫 关闭会员", use_container_width=True):
+            if target_email:
+                set_membership(target_email, False, plan=plan)
+            else:
+                st.warning("请先填写用户邮箱")
+        
+        st.divider()
+        st.caption("小工具：查询邮箱对应的用户 ID（用于排查）")
+        if st.button("查询用户ID", use_container_width=True):
+            uid_lookup = find_user_id_by_email(target_email)
+            if uid_lookup:
+                st.info(f"用户ID：`{uid_lookup}`")
+            else:
+                st.error("未找到该用户（确认已注册且邮箱拼写正确）")
+else:
+    # 非管理员给个提示（可省略）
+    pass
+
 # -------- 顶栏 --------
 col1, col2 = st.columns([1, 1])
 with col1:
