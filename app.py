@@ -39,6 +39,14 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+.card {
+  background:#111827;
+  border:1px solid #1F2937;
+  border-radius:16px;
+  padding:18px;
+  margin:10px 0;
+}
+
 # -------- Supabase --------
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
@@ -172,6 +180,16 @@ elif choice == "我的进度":
             st.write(f"{p['status']}：{p['count']} 个")
     else:
         st.info("还没有进度数据")
+
+col1, col2 = st.columns([2, 1])
+with col1:
+    st.subheader("🎴 闪卡模式")
+    # 抽卡 & 展示
+
+with col2:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("👉 提示：点击抽卡，显示韩中释义")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 elif choice == "管理员":
     st.subheader("🛠 管理员 - 手动开通会员")
