@@ -6,7 +6,7 @@ from streamlit_option_menu import option_menu
 from textwrap import dedent
 
 # -------- 基础设置 --------
-st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="centered")
+st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="wide")
 
 # 初始化 session_state
 if "current" not in st.session_state:
@@ -125,12 +125,13 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # -------- 功能页 --------
 if choice == "单词列表":
+    with st.container():
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("📖 单词列表")
     limit = st.slider("每次加载数量", 10, 100, 30)
-    rows = sb.table("vocabularies").select("id, word_kr, meaning_zh, pos")\
-        .eq("category_id", cat_id).eq("subcategory_id", sub_id).limit(limit).execute().data or []
     for r in rows:
         st.markdown(f"**{r['word_kr']}** ({r.get('pos','')}) - {r['meaning_zh']}")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 elif choice == "闪卡":
     st.subheader("🎴 闪卡模式")
