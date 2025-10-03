@@ -10,12 +10,13 @@ st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout
 
 # 初始化 session_state
 if "current" not in st.session_state:
-    st.session_state.current = {
-        "cat_id": None, "sub_id": None,
-        "cat_name": "", "sub_name": ""
-    }
+    st.session_state.current = {"cat_id": None, "sub_id": None, "cat_name": "", "sub_name": ""}
 if "user" not in st.session_state:
     st.session_state.user = None
+if "flash" not in st.session_state:
+    st.session_state.flash = None
+if "quiz_q" not in st.session_state:
+    st.session_state.quiz_q = None
 
 def set_current(cat_id=None, cat_name=None, sub_id=None, sub_name=None):
     cur = st.session_state.current
@@ -24,7 +25,6 @@ def set_current(cat_id=None, cat_name=None, sub_id=None, sub_name=None):
     if sub_id is not None:  cur["sub_id"] = sub_id
     if sub_name is not None: cur["sub_name"] = sub_name
 
-# -------- 样式 --------
 # -------- 样式 --------
 st.markdown(
     dedent("""
@@ -35,7 +35,6 @@ st.markdown(
       .btn-row button {border-radius:10px !important; height:42px;}
       .metric {font-size:13px; color:#9CA3AF; margin-bottom:6px;}
       .big {font-size:18px; font-weight:700;}
-      /* 右侧列留点空隙（可选） */
       .col-right {padding-left:10px; padding-right:10px;}
     </style>
     """),
@@ -92,7 +91,7 @@ uid = st.session_state.user.id
 
 # -------- 侧边栏菜单 --------
 with st.sidebar:
-    st.image("https://static-typical-placeholder/logo.png", width=120)  # 替换为你自己的logo
+    st.image("https://static-typical-placeholder/logo.png", width=120)  # TODO: 换成你的 logo
     choice = option_menu(
         "TOPIK 背单词 · MVP",
         ["单词列表", "闪卡", "测验", "我的进度", "管理员"],
@@ -126,73 +125,114 @@ st.markdown('<div class="metric">当前目录</div>', unsafe_allow_html=True)
 st.markdown(f'<div class="big">{cat_name} / {sub_name}</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# -------- 功能页 --------
+# ====================== 功能页 ======================
+
+# 1) 单词列表
 if choice == "单词列表":
     st.subheader("📖 单词列表")
     limit = st.slider("每次加载数量", 10, 100, 30)
-    with st.container():   # ✅ 下面的所有内容必须缩进
+    with st.container():
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        rows = sb.table("vocabularies").select("id, word_kr, meaning_zh, pos")\
-            .eq("category_id", cat_id).eq("subcategory_id", sub_id).limit(limit).execute().data or []
+        rows = (
+            sb.table("vocabularies")
+            .select("id, word_kr, meaning_zh, pos")
+            .eq("category_id", cat_id).eq("subcategory_id", sub_id)
+            .limit(limit).execute().data or []
+        )
         for r in rows:
-            st.markdown(f"**{r['word_kr']}** ({r.get('pos','')}) - {r['meaning_zh']}")
+            pos = r.get("pos") or ""
+            st.markdown(f"**{r['word_kr']}** ({pos}) - {r['meaning_zh']}")
         st.markdown('</div>', unsafe_allow_html=True)
 
+# 2) 闪卡（稳定展示：只在点击时抽卡）
 elif choice == "闪卡":
     st.subheader("🎴 闪卡模式")
-    rows = sb.table("vocabularies").select("id, word_kr, meaning_zh")\
-        .eq("category_id", cat_id).eq("subcategory_id", sub_id).execute().data or []
-    if rows:
-        card = random.choice(rows)
-        if st.button("抽一张卡片"):
-            st.session_state.flash = card
-        if "flash" in st.session_state:
-            st.info(f"韩语：{st.session_state.flash['word_kr']}")
-            st.success(f"中文：{st.session_state.flash['meaning_zh']}")
-    else:
-        st.write("暂无单词")
+    rows = (
+        sb.table("vocabularies")
+        .select("id, word_kr, meaning_zh")
+        .eq("category_id", cat_id).eq("subcategory_id", sub_id)
+        .execute().data or []
+    )
 
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        if st.button("🎲 抽一张卡片", use_container_width=True, type="primary"):
+            st.session_state.flash = random.choice(rows) if rows else None
+
+        card = st.session_state.flash
+        if card:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.info(f"韩语：{card['word_kr']}")
+            st.success(f"中文：{card['meaning_zh']}")
+            st.markdown('</div>', unsafe_allow_html=True)
+        elif not rows:
+            st.write("暂无单词")
+        else:
+            st.write("点击上方按钮抽一张卡片～")
+
+    with col2:
+        st.markdown('<div class="card col-right">', unsafe_allow_html=True)
+        st.markdown("⭐ 提示：点击 **抽一张卡片**，会显示中韩释义。")
+        st.markdown("💡 建议：抽到的词可以在右上角加收藏（后续可做『错词本/收藏夹』）。")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# 3) 测验（修复“答对也判错”的状态问题）
 elif choice == "测验":
     st.subheader("✏️ 简单测验")
-    rows = sb.table("vocabularies").select("id, word_kr, meaning_zh")\
-        .eq("category_id", cat_id).eq("subcategory_id", sub_id).execute().data or []
-    if rows:
-        q = random.choice(rows)
-        ans = st.text_input(f"韩语：{q['word_kr']} 的中文意思是？")
-        if st.button("提交"):
-            if ans.strip() == q['meaning_zh']:
-                st.success("答对了！")
-            else:
-                st.error(f"答错了，正确答案：{q['meaning_zh']}")
-    else:
-        st.write("暂无单词")
+    rows = (
+        sb.table("vocabularies")
+        .select("id, word_kr, meaning_zh")
+        .eq("category_id", cat_id).eq("subcategory_id", sub_id)
+        .execute().data or []
+    )
 
+    # 只在没有题目时抽一题；“换一题”按钮可手动替换
+    if rows and not st.session_state.quiz_q:
+        st.session_state.quiz_q = random.choice(rows)
+
+    q = st.session_state.quiz_q
+    if not rows:
+        st.write("暂无单词")
+    elif not q:
+        st.info("点击『换一题』开始练习～")
+    else:
+        ans = st.text_input(f"韩语：{q['word_kr']} 的中文意思是？", key="quiz_ans")
+        submit_col, change_col = st.columns(2)
+        with submit_col:
+            if st.button("提交", use_container_width=True):
+                if ans.strip() == q['meaning_zh'].strip():
+                    st.success("答对了！")
+                else:
+                    st.error(f"答错了，正确答案：{q['meaning_zh']}")
+        with change_col:
+            if st.button("换一题", use_container_width=True):
+                st.session_state.quiz_q = random.choice(rows)
+                st.session_state.quiz_ans = ""
+                st.rerun()
+
+# 4) 我的进度（保留你的聚合写法；若后端需要可再加 group by）
 elif choice == "我的进度":
     st.subheader("📊 我的进度")
-    progress = sb.table("user_progress").select("status, count:count()").eq("user_id", uid).execute().data or []
+    progress = (
+        sb.table("user_progress")
+        .select("status, count:count()")
+        .eq("user_id", uid).execute().data or []
+    )
     if progress:
         for p in progress:
             st.write(f"{p['status']}：{p['count']} 个")
     else:
         st.info("还没有进度数据")
 
-col1, col2 = st.columns([2, 1])
-with col1:
-    st.subheader("🎴 闪卡模式")
-    # 抽卡 & 展示
-
-with col2:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("👉 提示：点击抽卡，显示韩中释义")
-    st.markdown('</div>', unsafe_allow_html=True)
-
+# 5) 管理员（注意：使用 admin API 通常需要 Service Role Key）
 elif choice == "管理员":
     st.subheader("🛠 管理员 - 手动开通会员")
     if st.session_state.user.email.lower() in ADMIN_EMAILS:
         target_email = st.text_input("输入要开通的用户邮箱")
-        if st.button("✅ 开通会员"):
+        if st.button("✅ 开通会员", use_container_width=True):
             try:
-                # 查用户
+                # 这里通常需要使用 Service Role Key 初始化的 client 才能正常调用 admin API
+                # 如果用 anon key 会被权限拒绝
                 res = sb.auth.admin.get_user_by_email(target_email)
                 if res and res.user:
                     sb.table("memberships").upsert({
