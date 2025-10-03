@@ -47,6 +47,20 @@ with c3: st.button("🔁 随机 50 个", use_container_width=True)
 # -------- 基础设置 --------
 st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="centered")
 
+# 放在 import 和 st.set_page_config 之后
+if "current" not in st.session_state:
+    st.session_state.current = {
+        "cat_id": None, "sub_id": None,
+        "cat_name": "", "sub_name": ""
+    }
+
+def set_current(cat_id=None, cat_name=None, sub_id=None, sub_name=None):
+    cur = st.session_state.current
+    if cat_id is not None:  cur["cat_id"] = cat_id
+    if cat_name is not None: cur["cat_name"] = cat_name
+    if sub_id is not None:  cur["sub_id"] = sub_id
+    if sub_name is not None: cur["sub_name"] = sub_name
+
 from textwrap import dedent
 st.markdown(
     dedent("""
