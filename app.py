@@ -13,8 +13,43 @@ import random
 import streamlit as st
 from supabase import create_client, Client
 
+from streamlit_option_menu import option_menu
+
+with st.sidebar:
+    st.image("https://static-typical-placeholder/logo.png", width=120)  # 可换自己的logo
+    choice = option_menu(
+        "TOPIK 背单词 · MVP",
+        ["单词列表", "闪卡", "测验", "我的进度", "管理员"],  # 管理员项可按权限隐藏
+        icons=["list-ul","book","pencil","bar-chart","shield-lock"],
+        menu_icon="layers", default_index=0
+    )
+
+# 然后用 choice 来切换内容：
+if choice == "单词列表":
+    # 原 T1 的内容
+    ...
+elif choice == "闪卡":
+    # 原 T2 内容
+    ...
+# 以此类推
+
 # -------- 基础设置 --------
 st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="centered")
+
+from textwrap import dedent
+st.markdown(
+    dedent("""
+    <style>
+      .app-title {font-size: 40px; font-weight: 800; letter-spacing: .5px;}
+      .muted {color:#9CA3AF;font-size:14px}
+      .card {background:#111827; border:1px solid #1F2937; border-radius:16px; padding:18px; margin:10px 0;}
+      .btn-row button {border-radius:10px !important; height:42px;}
+      .metric {font-size:13px;color:#9CA3AF;margin-bottom:6px}
+      .big {font-size:18px;font-weight:700}
+    </style>
+    """),
+    unsafe_allow_html=True
+)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
