@@ -45,7 +45,7 @@ def require_login_ui():
                 if res and res.user:
                     st.session_state.user = res.user
                     st.success("登录成功")
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("登录失败，请检查邮箱/密码")
             except Exception as e:
@@ -197,7 +197,7 @@ with col2:
     if get_session_user() and st.button("退出登录", use_container_width=True):
         st.session_state.user = None
         sb.auth.sign_out()
-        st.experimental_rerun()
+        st.rerun()
 
 # -------- 登录态处理 --------
 if get_session_user() is None:
