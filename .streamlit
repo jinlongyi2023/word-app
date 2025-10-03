@@ -1,0 +1,7 @@
+[theme]
+base="dark"                      # 或 "light"
+primaryColor="#F43F5E"           # 主色（按钮/高亮）
+backgroundColor="#0B0F19"        # 背景
+secondaryBackgroundColor="#111827" 
+textColor="#E5E7EB"
+font="sans serif"                # "serif" | "monospace"
