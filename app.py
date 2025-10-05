@@ -148,11 +148,11 @@ if choice == "单词列表":
         st.markdown(f"**{r['word_kr']}** ({pos}) - {r['meaning_zh']}")
 
         if example_kr or example_zh:
-        st.markdown(
-            f"<div style='margin-left:1rem; color:#999;'>"
-            f"{example_kr}<br><span style='color:#ccc;'>{example_zh}</span>"
-            f"</div>",
-            unsafe_allow_html=True
+            st.markdown(
+                f"<div style='margin-left:1rem; color:#999;'>"
+                f"{example_kr}<br><span style='color:#ccc;'>{example_zh}</span>"
+                f"</div>",
+                unsafe_allow_html=True
         )
 
         st.markdown("---")
