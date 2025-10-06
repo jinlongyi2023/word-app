@@ -140,35 +140,61 @@ if choice == "单词列表":
     )
 
     for r in rows:
-        word_kr = r["word_kr"]
-        pos = r.get("pos") or ""
-        meaning_zh = r.get("meaning_zh") or ""
-        example_kr = r.get("example_kr") or ""
-        example_zh = r.get("example_zh") or ""
+    word_kr = r["word_kr"]
+    pos = r.get("pos") or ""
+    meaning_zh = r.get("meaning_zh") or ""
+    example_kr = r.get("example_kr") or ""
+    example_zh = r.get("example_zh") or ""
 
-        components.html(f"""
-        <div style="margin-bottom:1.2rem; padding:0.6rem 0; border-bottom:1px solid #222;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:20px; font-weight:600;">{word_kr}</span>
-                <button onclick="speakWord('{word_kr}')" 
-                    style="background:none; border:none; cursor:pointer; font-size:18px;">🔊</button>
-                <span style="color:#ccc;">({pos}) - {meaning_zh}</span>
-            </div>
-            <div style="margin-left:1.5rem; color:#aaa; font-size:15px; display:flex; align-items:center; gap:6px;">
-                <span>{example_kr}</span>
-                {"<button onclick=\"speakWord('" + example_kr + "')\" style='background:none;border:none;cursor:pointer;font-size:16px;'>🔊</button>" if example_kr else ""}
-            </div>
-            <div style="margin-left:1.5rem; color:#888; font-size:14px;">{example_zh}</div>
+    # 构建例句朗读按钮
+    example_button = ""
+    if example_kr:
+        example_button = f"""
+        <button class='speak-btn' onclick='speakWord(`{example_kr}`)'>🔊</button>
+        """
+
+    html_block = f"""
+    <div style="margin-bottom:1.2rem; padding:0.6rem 0; border-bottom:1px solid #222;">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:20px; font-weight:600;">{word_kr}</span>
+            <button class='speak-btn' onclick='speakWord(`{word_kr}`)'>🔊</button>
+            <span style="color:#ccc;">({pos}) - {meaning_zh}</span>
         </div>
+        <div style="margin-left:1.5rem; color:#aaa; font-size:15px; display:flex; align-items:center; gap:6px;">
+            <span>{example_kr}</span>
+            {example_button}
+        </div>
+        <div style="margin-left:1.5rem; color:#888; font-size:14px;">{example_zh}</div>
+    </div>
 
-        <script>
-        function speakWord(text) {{
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'ko-KR';
-            speechSynthesis.speak(utter);
-        }}
-        </script>
-        """, height=120)
+    <style>
+    .speak-btn {{
+        background:none;
+        border:none;
+        cursor:pointer;
+        font-size:18px;
+        transition:all 0.2s ease;
+        color:#ccc;
+    }}
+    .speak-btn:hover {{
+        color:#ff6b9d;
+        text-shadow:0 0 6px #ff99bb;
+        transform:scale(1.1);
+    }}
+    </style>
+
+    <script>
+    function speakWord(text) {{
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'ko-KR';
+        speechSynthesis.speak(utter);
+    }}
+    </script>
+    """
+
+    components.html(html_block, height=130)
+
+    
 
 # 2) 闪卡
 elif choice == "闪卡":
