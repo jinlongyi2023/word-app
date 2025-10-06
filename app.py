@@ -190,7 +190,7 @@ for r in rows:
         speechSynthesis.speak(utter);
     }}
     </script>
-    """
+    """  # 结束多行字符串
     components.html(html_block, height=130)
 
 # 2) 闪卡
