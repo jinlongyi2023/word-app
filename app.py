@@ -173,7 +173,7 @@ if choice == "单词列表":
         html_block = f"""
         <div style="margin-bottom:1.2rem; padding:0.6rem 0; border-bottom:1px solid #222;">
             <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:20px; font-weight:600;">{word_kr}</span>
+                <span style="font-size:20px; font-weight:600; color:#ffb3c1;">{word_kr}</span>
                 <button class='speak-btn' onclick='speakWord(`{word_kr}`)'>🔊</button>
                 <span style="color:#ccc;">({pos}) - {meaning_zh}</span>
             </div>
