@@ -247,10 +247,16 @@ elif choice == "闪卡":
         st.markdown("💡 建议：抽到的词可以在右上角加收藏（后续可做『错词本/收藏夹』）。")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# 3️⃣ 简单测验
+# 3️⃣ 简单测验（支持手写答题）
 elif choice == "测验":
+    from streamlit_drawable_canvas import st_canvas
+    import base64
+    from PIL import Image
+    import io
+
     sb.table("user_progress").upsert({"user_id": uid, "last_page": "测验模式"}).execute()
     st.subheader("✏️ 简单测验")
+
     rows = (
         sb.table("vocabularies")
         .select("id, word_kr, meaning_zh")
@@ -267,14 +273,40 @@ elif choice == "测验":
     elif not q:
         st.info("点击『换一题』开始练习～")
     else:
-        ans = st.text_input(f"韩语：{q['word_kr']} 的中文意思是？", key="quiz_ans")
+        st.markdown(f"### 韩语：{q['word_kr']} 的中文意思是？")
+        st.caption("👇 请使用手写区域书写韩文答案（iPad / 触屏设备均可）")
+
+        # --- 手写区域 ---
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 255, 255, 1)",  # 背景白
+            stroke_width=3,
+            stroke_color="#000000",
+            background_color="#ffffff",
+            height=200,
+            width=400,
+            drawing_mode="freedraw",
+            key="canvas",
+        )
+
         submit_col, change_col = st.columns(2)
+
         with submit_col:
             if st.button("提交", use_container_width=True):
-                if ans.strip() == q['meaning_zh'].strip():
-                    st.success("答对了！")
+                if canvas_result.image_data is not None:
+                    # 保存手写图片为PNG
+                    img = Image.fromarray((canvas_result.image_data).astype("uint8"))
+                    buffer = io.BytesIO()
+                    img.save(buffer, format="PNG")
+                    img_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+                    # 显示图片预览
+                    st.image(img, caption="你的手写答案", use_container_width=False)
+
+                    # 未来可添加 OCR 自动识别功能
+                    st.info("图片已生成（未来版本将自动识别韩文手写内容）")
                 else:
-                    st.error(f"答错了，正确答案：{q['meaning_zh']}")
+                    st.warning("请先在手写区域书写后再提交。")
+
         with change_col:
             if st.button("换一题", use_container_width=True):
                 st.session_state.quiz_q = random.choice(rows)
