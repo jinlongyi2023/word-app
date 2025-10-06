@@ -306,6 +306,9 @@ elif choice == "测验":
                     # ==== 调用 Naver CLOVA OCR ====
                     OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY", "")
                     OCR_URL = os.getenv("CLOVA_OCR_URL", "")
+                    st.write("OCR_URL:", OCR_URL)
+                    st.write("OCR_SECRET_KEY length:", len(OCR_SECRET_KEY))
+
                     if not OCR_SECRET_KEY or not OCR_URL:
                         st.error("❗请先在环境变量中设置 CLOVA_OCR_SECRET_KEY 和 CLOVA_OCR_URL")
                     else:
