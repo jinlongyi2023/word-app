@@ -4,11 +4,11 @@ TOPIK 背单词 · MVP
 功能：
 - 登录注册（Supabase）
 - 分类选择（categories / subcategories）
-- 单词展示 + 浏览器朗读功能（韩语）
+- 单词展示 + 浏览器朗读（韩语）
 - 闪卡模式
 - 简单测验
-- 学习进度
-- 管理员开通会员
+- 学习进度自动记录
+- 管理员手动开通会员
 """
 
 import os
@@ -145,8 +145,11 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # ====================== 功能页 ======================
 
-# 1) 单词列表（带朗读功能）
+# 1️⃣ 单词列表
 if choice == "单词列表":
+    # 自动记录学习进度
+    sb.table("user_progress").upsert({"user_id": uid, "last_page": "单词列表"}).execute()
+
     st.subheader("📖 单词列表")
     limit = st.slider("每次加载数量", 10, 100, 30)
     rows = (
@@ -211,8 +214,9 @@ if choice == "单词列表":
 
         components.html(html_block, height=130)
 
-# 2) 闪卡模式
+# 2️⃣ 闪卡模式
 elif choice == "闪卡":
+    sb.table("user_progress").upsert({"user_id": uid, "last_page": "闪卡模式"}).execute()
     st.subheader("🎴 闪卡模式")
     rows = (
         sb.table("vocabularies")
@@ -243,8 +247,9 @@ elif choice == "闪卡":
         st.markdown("💡 建议：抽到的词可以在右上角加收藏（后续可做『错词本/收藏夹』）。")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# 3) 简单测验
+# 3️⃣ 简单测验
 elif choice == "测验":
+    sb.table("user_progress").upsert({"user_id": uid, "last_page": "测验模式"}).execute()
     st.subheader("✏️ 简单测验")
     rows = (
         sb.table("vocabularies")
@@ -276,21 +281,28 @@ elif choice == "测验":
                 st.session_state.quiz_ans = ""
                 st.rerun()
 
-# 4) 我的进度
+# 4️⃣ 我的进度
 elif choice == "我的进度":
     st.subheader("📊 我的进度")
+
     progress = (
         sb.table("user_progress")
-        .select("status, count:count()")
-        .eq("user_id", uid).execute().data or []
+        .select("last_page, updated_at")
+        .eq("user_id", uid)
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
     )
-    if progress:
-        for p in progress:
-            st.write(f"{p['status']}：{p['count']} 个")
-    else:
-        st.info("还没有进度数据")
 
-# 5) 管理员开通会员
+    if progress:
+        last = progress[0]
+        st.success(f"上次学习位置：**{last['last_page']}**")
+        st.caption(f"更新时间：{last['updated_at']}")
+    else:
+        st.info("暂无学习记录，请先开始学习吧！")
+
+# 5️⃣ 管理员
 elif choice == "管理员":
     st.subheader("🛠 管理员 - 手动开通会员")
     if st.session_state.user.email.lower() in ADMIN_EMAILS:
