@@ -191,10 +191,7 @@ for r in rows:
     }}
     </script>
     """
-
     components.html(html_block, height=130)
-
-
 
 # 2) 闪卡
 elif choice == "闪卡":
