@@ -349,7 +349,11 @@ elif choice == "测验":
 
         with change_col:
             if st.button("换一题", use_container_width=True):
+            # 随机换一题
                 st.session_state.quiz_q = random.choice(rows)
+            # 清空手写区域缓存
+            if "canvas" in st.session_state:
+                del st.session_state["canvas"]
                 st.rerun()
 
 # 4️⃣ 我的进度
