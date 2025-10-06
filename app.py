@@ -139,12 +139,12 @@ if choice == "单词列表":
         .limit(limit).execute().data or []
     )
 
-    for r in rows:
-        word_kr = r["word_kr"]
-        pos = r.get("pos") or ""
-        meaning_zh = r.get("meaning_zh") or ""
-        example_kr = r.get("example_kr") or ""
-        example_zh = r.get("example_zh") or ""
+for r in rows:
+    word_kr = r["word_kr"]
+    pos = r.get("pos") or ""
+    meaning_zh = r.get("meaning_zh") or ""
+    example_kr = r.get("example_kr") or ""
+    example_zh = r.get("example_zh") or ""
 
     # 构建例句朗读按钮
     example_button = ""
@@ -193,6 +193,7 @@ if choice == "单词列表":
     """
 
     components.html(html_block, height=130)
+
 
     
 
