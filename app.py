@@ -6,7 +6,7 @@ TOPIK 背单词 · MVP
 - 分类选择（categories / subcategories）
 - 单词展示 + 浏览器朗读（韩语）
 - 闪卡模式
-- 简单测验
+- 简单测验（手写 + OCR 自动判分）
 - 学习进度自动记录
 - 管理员手动开通会员
 """
@@ -18,6 +18,10 @@ from supabase import create_client, Client
 from streamlit_option_menu import option_menu
 from textwrap import dedent
 import streamlit.components.v1 as components
+from streamlit_drawable_canvas import st_canvas
+from google.cloud import vision
+import base64, io, time
+from PIL import Image
 
 # -------- 页面配置 --------
 st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="wide")
@@ -113,7 +117,7 @@ with st.sidebar:
     choice = option_menu(
         "TOPIK 背单词 · MVP",
         ["单词列表", "闪卡", "测验", "我的进度", "管理员"],
-        icons=["list-ul","book","pencil","bar-chart","shield-lock"],
+        icons=["list-ul", "book", "pencil", "bar-chart", "shield-lock"],
         menu_icon="layers", default_index=0
     )
 
@@ -147,9 +151,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # 1️⃣ 单词列表
 if choice == "单词列表":
-    # 自动记录学习进度
     sb.table("user_progress").upsert({"user_id": uid, "last_page": "单词列表"}).execute()
-
     st.subheader("📖 单词列表")
     limit = st.slider("每次加载数量", 10, 100, 30)
     rows = (
@@ -166,13 +168,6 @@ if choice == "单词列表":
         example_kr = r.get("example_kr") or ""
         example_zh = r.get("example_zh") or ""
 
-        # 构建例句朗读按钮
-        example_button = ""
-        if example_kr:
-            example_button = f"""
-            <button class='speak-btn' onclick='speakWord(`{example_kr}`)'>🔊</button>
-            """
-
         html_block = f"""
         <div style="margin-bottom:1.2rem; padding:0.6rem 0; border-bottom:1px solid #222;">
             <div style="display:flex; align-items:center; gap:8px;">
@@ -180,38 +175,12 @@ if choice == "单词列表":
                 <button class='speak-btn' onclick='speakWord(`{word_kr}`)'>🔊</button>
                 <span style="color:#ccc;">({pos}) - {meaning_zh}</span>
             </div>
-            <div style="margin-left:1.5rem; color:#aaa; font-size:15px; display:flex; align-items:center; gap:6px;">
-                <span>{example_kr}</span>
-                {example_button}
+            <div style="margin-left:1.5rem; color:#aaa; font-size:15px;">
+                {example_kr}
             </div>
             <div style="margin-left:1.5rem; color:#888; font-size:14px;">{example_zh}</div>
         </div>
-
-        <style>
-        .speak-btn {{
-            background:none;
-            border:none;
-            cursor:pointer;
-            font-size:18px;
-            transition:all 0.2s ease;
-            color:#ccc;
-        }}
-        .speak-btn:hover {{
-            color:#ff6b9d;
-            text-shadow:0 0 6px #ff99bb;
-            transform:scale(1.1);
-        }}
-        </style>
-
-        <script>
-        function speakWord(text) {{
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'ko-KR';
-            speechSynthesis.speak(utter);
-        }}
-        </script>
-        """  # 结束多行字符串
-
+        """
         components.html(html_block, height=130)
 
 # 2️⃣ 闪卡模式
@@ -225,38 +194,23 @@ elif choice == "闪卡":
         .execute().data or []
     )
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        if st.button("🎲 抽一张卡片", use_container_width=True, type="primary"):
-            st.session_state.flash = random.choice(rows) if rows else None
+    if st.button("🎲 抽一张卡片", use_container_width=True, type="primary"):
+        st.session_state.flash = random.choice(rows) if rows else None
 
-        card = st.session_state.flash
-        if card:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.info(f"韩语：{card['word_kr']}")
-            st.success(f"中文：{card['meaning_zh']}")
-            st.markdown('</div>', unsafe_allow_html=True)
-        elif not rows:
-            st.write("暂无单词")
-        else:
-            st.write("点击上方按钮抽一张卡片～")
+    card = st.session_state.flash
+    if card:
+        st.info(f"韩语：{card['word_kr']}")
+        st.success(f"中文：{card['meaning_zh']}")
+    elif not rows:
+        st.write("暂无单词")
+    else:
+        st.write("点击上方按钮抽一张卡片～")
 
-    with col2:
-        st.markdown('<div class="card col-right">', unsafe_allow_html=True)
-        st.markdown("⭐ 提示：点击 **抽一张卡片**，会显示中韩释义。")
-        st.markdown("💡 建议：抽到的词可以在右上角加收藏（后续可做『错词本/收藏夹』）。")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# 3️⃣ 简单测验（手写 → OCR识别 → 自动判分）
+# 3️⃣ 简单测验（Google Vision OCR 版本）
 elif choice == "测验":
-    from streamlit_drawable_canvas import st_canvas
-    import base64, io, requests, time
-    from PIL import Image
-
     sb.table("user_progress").upsert({"user_id": uid, "last_page": "测验模式"}).execute()
-    st.subheader("✏️ 手写测验（韩文识别自动判分）")
+    st.subheader("✏️ 手写测验（Google Vision OCR 自动判分）")
 
-    # 获取词汇
     rows = (
         sb.table("vocabularies")
         .select("id, word_kr, meaning_zh")
@@ -268,7 +222,6 @@ elif choice == "测验":
         st.session_state.quiz_q = random.choice(rows)
 
     q = st.session_state.quiz_q
-
     if not rows:
         st.write("暂无单词")
     elif not q:
@@ -277,7 +230,6 @@ elif choice == "测验":
         st.markdown(f"### 中文：{q['meaning_zh']}")
         st.caption("👇 请在下方手写韩文（iPad / 触屏设备均可）")
 
-        # 手写区域
         canvas_result = st_canvas(
             fill_color="rgba(255, 255, 255, 1)",
             stroke_width=3,
@@ -294,72 +246,44 @@ elif choice == "测验":
         with submit_col:
             if st.button("提交", use_container_width=True):
                 if canvas_result.image_data is not None:
-                    # 转换为 PNG
                     img = Image.fromarray((canvas_result.image_data).astype("uint8"))
                     buffer = io.BytesIO()
                     img.save(buffer, format="PNG")
                     buffer.seek(0)
 
-                    # 转 Base64
-                    img_base64 = base64.b64encode(buffer.getvalue()).decode()
+                    try:
+                        client = vision.ImageAnnotatorClient()
+                        image = vision.Image(content=buffer.getvalue())
+                        response = client.text_detection(image=image)
+                        texts = response.text_annotations
+                        infer_text = ""
 
-                    # ==== 调用 Naver CLOVA OCR ====
-                    OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY", "")
-                    OCR_URL = os.getenv("CLOVA_OCR_URL", "")
-                    st.write("OCR_URL:", OCR_URL)
-                    st.write("OCR_SECRET_KEY length:", len(OCR_SECRET_KEY))
+                        if texts:
+                            infer_text = texts[0].description.strip()
+                            st.info(f"🧾 识别结果：{infer_text}")
 
-                    if not OCR_SECRET_KEY or not OCR_URL:
-                        st.error("❗请先在环境变量中设置 CLOVA_OCR_SECRET_KEY 和 CLOVA_OCR_URL")
-                    else:
-                        try:
-                            headers = {
-                                "X-OCR-SECRET": OCR_SECRET_KEY,
-                                "Content-Type": "application/json"
-                            }
-                            data = {
-                                "version": "V2",
-                                "requestId": str(time.time()),
-                                "timestamp": int(time.time() * 1000),
-                                "images": [{"format": "png", "data": img_base64, "name": "test"}]
-                            }
-                            res = requests.post(OCR_URL, headers=headers, json=data)
-                            res_json = res.json()
-
-                            # 提取识别文字
-                            infer_text = ""
-                            if res_json.get("images") and res_json["images"][0].get("fields"):
-                                infer_text = "".join([f["inferText"] for f in res_json["images"][0]["fields"]])
-
-                            if infer_text:
-                                st.info(f"🧾 识别结果：{infer_text}")
-                                # 自动判分（去除空格比对）
-                                if infer_text.replace(" ", "") == q["word_kr"].replace(" ", ""):
-                                    st.success("✅ 正确！")
-                                else:
-                                    st.error(f"❌ 错误。正确答案：{q['word_kr']}")
+                            if infer_text.replace(" ", "") == q["word_kr"].replace(" ", ""):
+                                st.success("✅ 正确！")
                             else:
-                                st.warning("未识别出文字，请重试或写得更清晰些。")
+                                st.error(f"❌ 错误。正确答案：{q['word_kr']}")
+                        else:
+                            st.warning("未识别出文字，请重试或写得更清晰些。")
 
-                        except Exception as e:
-                            st.error(f"OCR 识别异常：{e}")
-
+                    except Exception as e:
+                        st.error(f"OCR 识别异常：{e}")
                 else:
                     st.warning("请先在手写区域书写后再提交。")
 
         with change_col:
             if st.button("换一题", use_container_width=True):
-            # 随机换一题
                 st.session_state.quiz_q = random.choice(rows)
-            # 清空手写区域缓存
-            if "canvas" in st.session_state:
-                del st.session_state["canvas"]
+                if "canvas" in st.session_state:
+                    del st.session_state["canvas"]
                 st.rerun()
 
 # 4️⃣ 我的进度
 elif choice == "我的进度":
     st.subheader("📊 我的进度")
-
     progress = (
         sb.table("user_progress")
         .select("last_page, updated_at")
@@ -369,7 +293,6 @@ elif choice == "我的进度":
         .execute()
         .data
     )
-
     if progress:
         last = progress[0]
         st.success(f"上次学习位置：**{last['last_page']}**")
