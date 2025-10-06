@@ -1,3 +1,16 @@
+# -*- coding: utf-8 -*-
+"""
+TOPIK 背单词 · MVP
+功能：
+- 登录注册（Supabase）
+- 分类选择（categories / subcategories）
+- 单词展示 + 浏览器朗读功能（韩语）
+- 闪卡模式
+- 简单测验
+- 学习进度
+- 管理员开通会员
+"""
+
 import os
 import random
 import streamlit as st
@@ -6,10 +19,10 @@ from streamlit_option_menu import option_menu
 from textwrap import dedent
 import streamlit.components.v1 as components
 
-# -------- 基础设置 --------
+# -------- 页面配置 --------
 st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="wide")
 
-# 初始化 session_state
+# -------- 初始化 session --------
 if "current" not in st.session_state:
     st.session_state.current = {"cat_id": None, "sub_id": None, "cat_name": "", "sub_name": ""}
 if "user" not in st.session_state:
@@ -21,10 +34,14 @@ if "quiz_q" not in st.session_state:
 
 def set_current(cat_id=None, cat_name=None, sub_id=None, sub_name=None):
     cur = st.session_state.current
-    if cat_id is not None:  cur["cat_id"] = cat_id
-    if cat_name is not None: cur["cat_name"] = cat_name
-    if sub_id is not None:  cur["sub_id"] = sub_id
-    if sub_name is not None: cur["sub_name"] = sub_name
+    if cat_id is not None:
+        cur["cat_id"] = cat_id
+    if cat_name is not None:
+        cur["cat_name"] = cat_name
+    if sub_id is not None:
+        cur["sub_id"] = sub_id
+    if sub_name is not None:
+        cur["sub_name"] = sub_name
 
 # -------- 样式 --------
 st.markdown(
@@ -42,7 +59,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# -------- Supabase --------
+# -------- Supabase 连接 --------
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 SERVICE_ROLE_KEY = os.getenv("SERVICE_ROLE_KEY", "")
@@ -54,7 +71,7 @@ if not SUPABASE_URL or not SUPABASE_ANON_KEY:
 
 sb: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-# -------- 登录模块 --------
+# -------- 登录 / 注册 --------
 def require_login_ui():
     tab_login, tab_signup = st.tabs(["登录", "注册"])
     with tab_login:
@@ -100,7 +117,7 @@ with st.sidebar:
         menu_icon="layers", default_index=0
     )
 
-# -------- 数据：目录和子目录 --------
+# -------- 分类与子类 --------
 cats = sb.table("categories").select("id, name").execute().data or []
 if not cats:
     st.warning("还没有任何目录。请在数据库 `categories` 中先添加。")
@@ -128,7 +145,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # ====================== 功能页 ======================
 
-# 1) 单词列表（新增朗读功能）
+# 1) 单词列表（带朗读功能）
 if choice == "单词列表":
     st.subheader("📖 单词列表")
     limit = st.slider("每次加载数量", 10, 100, 30)
@@ -139,61 +156,62 @@ if choice == "单词列表":
         .limit(limit).execute().data or []
     )
 
-for r in rows:
-    word_kr = r["word_kr"]
-    pos = r.get("pos") or ""
-    meaning_zh = r.get("meaning_zh") or ""
-    example_kr = r.get("example_kr") or ""
-    example_zh = r.get("example_zh") or ""
+    for r in rows:
+        word_kr = r["word_kr"]
+        pos = r.get("pos") or ""
+        meaning_zh = r.get("meaning_zh") or ""
+        example_kr = r.get("example_kr") or ""
+        example_zh = r.get("example_zh") or ""
 
-    # 构建例句朗读按钮
-    example_button = ""
-    if example_kr:
-        example_button = f"""
-        <button class='speak-btn' onclick='speakWord(`{example_kr}`)'>🔊</button>
-        """
+        # 构建例句朗读按钮
+        example_button = ""
+        if example_kr:
+            example_button = f"""
+            <button class='speak-btn' onclick='speakWord(`{example_kr}`)'>🔊</button>
+            """
 
-    html_block = f"""
-    <div style="margin-bottom:1.2rem; padding:0.6rem 0; border-bottom:1px solid #222;">
-        <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:20px; font-weight:600;">{word_kr}</span>
-            <button class='speak-btn' onclick='speakWord(`{word_kr}`)'>🔊</button>
-            <span style="color:#ccc;">({pos}) - {meaning_zh}</span>
+        html_block = f"""
+        <div style="margin-bottom:1.2rem; padding:0.6rem 0; border-bottom:1px solid #222;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:20px; font-weight:600;">{word_kr}</span>
+                <button class='speak-btn' onclick='speakWord(`{word_kr}`)'>🔊</button>
+                <span style="color:#ccc;">({pos}) - {meaning_zh}</span>
+            </div>
+            <div style="margin-left:1.5rem; color:#aaa; font-size:15px; display:flex; align-items:center; gap:6px;">
+                <span>{example_kr}</span>
+                {example_button}
+            </div>
+            <div style="margin-left:1.5rem; color:#888; font-size:14px;">{example_zh}</div>
         </div>
-        <div style="margin-left:1.5rem; color:#aaa; font-size:15px; display:flex; align-items:center; gap:6px;">
-            <span>{example_kr}</span>
-            {example_button}
-        </div>
-        <div style="margin-left:1.5rem; color:#888; font-size:14px;">{example_zh}</div>
-    </div>
 
-    <style>
-    .speak-btn {{
-        background:none;
-        border:none;
-        cursor:pointer;
-        font-size:18px;
-        transition:all 0.2s ease;
-        color:#ccc;
-    }}
-    .speak-btn:hover {{
-        color:#ff6b9d;
-        text-shadow:0 0 6px #ff99bb;
-        transform:scale(1.1);
-    }}
-    </style>
+        <style>
+        .speak-btn {{
+            background:none;
+            border:none;
+            cursor:pointer;
+            font-size:18px;
+            transition:all 0.2s ease;
+            color:#ccc;
+        }}
+        .speak-btn:hover {{
+            color:#ff6b9d;
+            text-shadow:0 0 6px #ff99bb;
+            transform:scale(1.1);
+        }}
+        </style>
 
-    <script>
-    function speakWord(text) {{
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = 'ko-KR';
-        speechSynthesis.speak(utter);
-    }}
-    </script>
-    """  # 结束多行字符串
-    components.html(html_block, height=130)
+        <script>
+        function speakWord(text) {{
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'ko-KR';
+            speechSynthesis.speak(utter);
+        }}
+        </script>
+        """  # 结束多行字符串
 
-# 2) 闪卡
+        components.html(html_block, height=130)
+
+# 2) 闪卡模式
 elif choice == "闪卡":
     st.subheader("🎴 闪卡模式")
     rows = (
@@ -225,7 +243,7 @@ elif choice == "闪卡":
         st.markdown("💡 建议：抽到的词可以在右上角加收藏（后续可做『错词本/收藏夹』）。")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# 3) 测验
+# 3) 简单测验
 elif choice == "测验":
     st.subheader("✏️ 简单测验")
     rows = (
@@ -272,7 +290,7 @@ elif choice == "我的进度":
     else:
         st.info("还没有进度数据")
 
-# 5) 管理员
+# 5) 管理员开通会员
 elif choice == "管理员":
     st.subheader("🛠 管理员 - 手动开通会员")
     if st.session_state.user.email.lower() in ADMIN_EMAILS:
