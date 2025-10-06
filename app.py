@@ -247,16 +247,16 @@ elif choice == "闪卡":
         st.markdown("💡 建议：抽到的词可以在右上角加收藏（后续可做『错词本/收藏夹』）。")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# 3️⃣ 简单测验（支持手写答题）
+# 3️⃣ 简单测验（手写 → OCR识别 → 自动判分）
 elif choice == "测验":
     from streamlit_drawable_canvas import st_canvas
-    import base64
+    import base64, io, requests, time
     from PIL import Image
-    import io
 
     sb.table("user_progress").upsert({"user_id": uid, "last_page": "测验模式"}).execute()
-    st.subheader("✏️ 简单测验")
+    st.subheader("✏️ 手写测验（韩文识别自动判分）")
 
+    # 获取词汇
     rows = (
         sb.table("vocabularies")
         .select("id, word_kr, meaning_zh")
@@ -268,17 +268,18 @@ elif choice == "测验":
         st.session_state.quiz_q = random.choice(rows)
 
     q = st.session_state.quiz_q
+
     if not rows:
         st.write("暂无单词")
     elif not q:
         st.info("点击『换一题』开始练习～")
     else:
-        st.markdown(f"### 韩语：{q['word_kr']} 的中文意思是？")
-        st.caption("👇 请使用手写区域书写韩文答案（iPad / 触屏设备均可）")
+        st.markdown(f"### 中文：{q['meaning_zh']}")
+        st.caption("👇 请在下方手写韩文（iPad / 触屏设备均可）")
 
-        # --- 手写区域 ---
+        # 手写区域
         canvas_result = st_canvas(
-            fill_color="rgba(255, 255, 255, 1)",  # 背景白
+            fill_color="rgba(255, 255, 255, 1)",
             stroke_width=3,
             stroke_color="#000000",
             background_color="#ffffff",
@@ -293,24 +294,59 @@ elif choice == "测验":
         with submit_col:
             if st.button("提交", use_container_width=True):
                 if canvas_result.image_data is not None:
-                    # 保存手写图片为PNG
+                    # 转换为 PNG
                     img = Image.fromarray((canvas_result.image_data).astype("uint8"))
                     buffer = io.BytesIO()
                     img.save(buffer, format="PNG")
+                    buffer.seek(0)
+
+                    # 转 Base64
                     img_base64 = base64.b64encode(buffer.getvalue()).decode()
 
-                    # 显示图片预览
-                    st.image(img, caption="你的手写答案", use_container_width=False)
+                    # ==== 调用 Naver CLOVA OCR ====
+                    OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY", "")
+                    OCR_URL = os.getenv("CLOVA_OCR_URL", "")
+                    if not OCR_SECRET_KEY or not OCR_URL:
+                        st.error("❗请先在环境变量中设置 CLOVA_OCR_SECRET_KEY 和 CLOVA_OCR_URL")
+                    else:
+                        try:
+                            headers = {
+                                "X-OCR-SECRET": OCR_SECRET_KEY,
+                                "Content-Type": "application/json"
+                            }
+                            data = {
+                                "version": "V2",
+                                "requestId": str(time.time()),
+                                "timestamp": int(time.time() * 1000),
+                                "images": [{"format": "png", "data": img_base64, "name": "test"}]
+                            }
+                            res = requests.post(OCR_URL, headers=headers, json=data)
+                            res_json = res.json()
 
-                    # 未来可添加 OCR 自动识别功能
-                    st.info("图片已生成（未来版本将自动识别韩文手写内容）")
+                            # 提取识别文字
+                            infer_text = ""
+                            if res_json.get("images") and res_json["images"][0].get("fields"):
+                                infer_text = "".join([f["inferText"] for f in res_json["images"][0]["fields"]])
+
+                            if infer_text:
+                                st.info(f"🧾 识别结果：{infer_text}")
+                                # 自动判分（去除空格比对）
+                                if infer_text.replace(" ", "") == q["word_kr"].replace(" ", ""):
+                                    st.success("✅ 正确！")
+                                else:
+                                    st.error(f"❌ 错误。正确答案：{q['word_kr']}")
+                            else:
+                                st.warning("未识别出文字，请重试或写得更清晰些。")
+
+                        except Exception as e:
+                            st.error(f"OCR 识别异常：{e}")
+
                 else:
                     st.warning("请先在手写区域书写后再提交。")
 
         with change_col:
             if st.button("换一题", use_container_width=True):
                 st.session_state.quiz_q = random.choice(rows)
-                st.session_state.quiz_ans = ""
                 st.rerun()
 
 # 4️⃣ 我的进度
