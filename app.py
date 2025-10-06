@@ -4,6 +4,7 @@ import streamlit as st
 from supabase import create_client, Client
 from streamlit_option_menu import option_menu
 from textwrap import dedent
+import streamlit.components.v1 as components
 
 # -------- 基础设置 --------
 st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="wide")
@@ -91,7 +92,7 @@ uid = st.session_state.user.id
 
 # -------- 侧边栏菜单 --------
 with st.sidebar:
-    st.image("https://static-typical-placeholder/logo.png", width=120)  # TODO: 换成你的 logo
+    st.image("https://static-typical-placeholder/logo.png", width=120)
     choice = option_menu(
         "TOPIK 背单词 · MVP",
         ["单词列表", "闪卡", "测验", "我的进度", "管理员"],
@@ -127,39 +128,49 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # ====================== 功能页 ======================
 
-# 1) 单词列表
+# 1) 单词列表（新增朗读功能）
 if choice == "单词列表":
     st.subheader("📖 单词列表")
     limit = st.slider("每次加载数量", 10, 100, 30)
-    with st.container():
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        rows = (
-            sb.table("vocabularies")
-            .select("id, word_kr, meaning_zh, pos, example_kr, example_zh")
-            .eq("category_id", cat_id).eq("subcategory_id", sub_id)
-            .limit(limit).execute().data or []
-        )
+    rows = (
+        sb.table("vocabularies")
+        .select("id, word_kr, meaning_zh, pos, example_kr, example_zh")
+        .eq("category_id", cat_id).eq("subcategory_id", sub_id)
+        .limit(limit).execute().data or []
+    )
 
-        for r in rows:
-            pos = r.get("pos") or ""
-            example_kr = r.get("example_kr") or ""
-            example_zh = r.get("example_zh") or ""
+    for r in rows:
+        word_kr = r["word_kr"]
+        pos = r.get("pos") or ""
+        meaning_zh = r.get("meaning_zh") or ""
+        example_kr = r.get("example_kr") or ""
+        example_zh = r.get("example_zh") or ""
 
-            st.markdown(f"**{r['word_kr']}** ({pos}) - {r['meaning_zh']}")
+        components.html(f"""
+        <div style="margin-bottom:1.2rem; padding:0.6rem 0; border-bottom:1px solid #222;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:20px; font-weight:600;">{word_kr}</span>
+                <button onclick="speakWord('{word_kr}')" 
+                    style="background:none; border:none; cursor:pointer; font-size:18px;">🔊</button>
+                <span style="color:#ccc;">({pos}) - {meaning_zh}</span>
+            </div>
+            <div style="margin-left:1.5rem; color:#aaa; font-size:15px; display:flex; align-items:center; gap:6px;">
+                <span>{example_kr}</span>
+                {"<button onclick=\"speakWord('" + example_kr + "')\" style='background:none;border:none;cursor:pointer;font-size:16px;'>🔊</button>" if example_kr else ""}
+            </div>
+            <div style="margin-left:1.5rem; color:#888; font-size:14px;">{example_zh}</div>
+        </div>
 
-            if example_kr or example_zh:
-                st.markdown(
-                    f"<div style='margin-left:1rem; color:#999;'>"
-                    f"{example_kr}<br><span style='color:#ccc;'>{example_zh}</span>"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
+        <script>
+        function speakWord(text) {{
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'ko-KR';
+            speechSynthesis.speak(utter);
+        }}
+        </script>
+        """, height=120)
 
-            st.markdown("---")
-
-        
-
-# 2) 闪卡（稳定展示：只在点击时抽卡）
+# 2) 闪卡
 elif choice == "闪卡":
     st.subheader("🎴 闪卡模式")
     rows = (
@@ -191,7 +202,7 @@ elif choice == "闪卡":
         st.markdown("💡 建议：抽到的词可以在右上角加收藏（后续可做『错词本/收藏夹』）。")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# 3) 测验（修复“答对也判错”的状态问题）
+# 3) 测验
 elif choice == "测验":
     st.subheader("✏️ 简单测验")
     rows = (
@@ -201,7 +212,6 @@ elif choice == "测验":
         .execute().data or []
     )
 
-    # 只在没有题目时抽一题；“换一题”按钮可手动替换
     if rows and not st.session_state.quiz_q:
         st.session_state.quiz_q = random.choice(rows)
 
@@ -225,7 +235,7 @@ elif choice == "测验":
                 st.session_state.quiz_ans = ""
                 st.rerun()
 
-# 4) 我的进度（保留你的聚合写法；若后端需要可再加 group by）
+# 4) 我的进度
 elif choice == "我的进度":
     st.subheader("📊 我的进度")
     progress = (
@@ -239,15 +249,13 @@ elif choice == "我的进度":
     else:
         st.info("还没有进度数据")
 
-# 5) 管理员（注意：使用 admin API 通常需要 Service Role Key）
+# 5) 管理员
 elif choice == "管理员":
     st.subheader("🛠 管理员 - 手动开通会员")
     if st.session_state.user.email.lower() in ADMIN_EMAILS:
         target_email = st.text_input("输入要开通的用户邮箱")
         if st.button("✅ 开通会员", use_container_width=True):
             try:
-                # 这里通常需要使用 Service Role Key 初始化的 client 才能正常调用 admin API
-                # 如果用 anon key 会被权限拒绝
                 res = sb.auth.admin.get_user_by_email(target_email)
                 if res and res.user:
                     sb.table("memberships").upsert({
