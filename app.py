@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-TOPIK 背单词 · MVP
+TOPIK必备单词1.0
 功能：
 - 登录注册（Supabase）
 - 分类选择（categories / subcategories）
@@ -20,7 +20,7 @@ from textwrap import dedent
 import streamlit.components.v1 as components
 
 # -------- 页面配置 --------
-st.set_page_config(page_title="TOPIK 背单词 · MVP", page_icon="📚", layout="wide")
+st.set_page_config(page_title="TOPIK必备单词", page_icon="📚", layout="wide")
 
 # -------- 初始化 session --------
 if "current" not in st.session_state:
