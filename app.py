@@ -111,7 +111,7 @@ uid = st.session_state.user.id
 with st.sidebar:
     st.image("https://static-typical-placeholder/logo.png", width=120)
     choice = option_menu(
-        "TOPIK 背单词 · MVP",
+        "TOPIK必备单词",
         ["单词列表", "闪卡", "测验", "我的进度", "管理员"],
         icons=["list-ul","book","pencil","bar-chart","shield-lock"],
         menu_icon="layers", default_index=0
